@@ -1,0 +1,302 @@
+---
+title: "EFA & CFA & OLS: Values"
+author: "Victoria Bolotova"
+date: "05 06 2022"
+output: 
+    html_document:
+      theme: cosmo
+      code_folding: show
+      toc: true
+      toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Reading data 
+
+```{r}
+library(foreign)
+benelux <- read.table("BENELUX_noMissing.dat",  header=F)
+
+names(benelux) <- c("Country","imsmetn","imdfetn","impcntr","gndr","yrbrn","edulvl",
+"eduyrs","ipmodst","imptrad","ipfrule","ipbhprp","ipeqopt","ipudrst","impenv")
+```
+
+```{r}
+library(dplyr)
+efadata <- benelux %>% 
+  select(imsmetn,imdfetn,impcntr,ipmodst,imptrad,
+ipfrule,ipbhprp,ipeqopt,ipudrst,impenv)
+```
+
+* imsmetn - ALLOW MANY/FEW IMMIGRANTS OF SAME RACE/ETHNIC GROUP AS MAJORITY
+* imdfetn - ALLOW MANY/FEW IMMIGRANTS OF DIFFERENT RACE/ETHNIC GROUP FROM MAJORITY
+* impcntr - ALLOW MANY/FEW IMMIGRANTS FROM POORER COUNTRIES OUTSIDE EUROPE
+* ipmodst - IMPORTANT TO BE HUMBLE AND MODEST, NOT DRAW ATTENTION
+* imptrad - IMPORTANT TO FOLLOW TRADITIONS AND CUSTOMS
+* ipfrule - IMPORTANT TO DO WHAT IS TOLD AND FOLLOW RULES
+* ipbhprp - IMPORTANT TO BEHAVE PROPERLY
+* ipeqopt - IMPORTANT THAT PEOPLE ARE TREATED EQUALLY AND HAVE EQUAL OPPORTUNITIES
+* ipudrst - IMPORTANT TO UNDERSTAND DIFFERENT PEOPLE
+* impenv - IMPORTANT TO CARE FOR NATURE AND ENVIRONMENT
+
+  
+# EFA 
+
+## Checking data adequacy
+
+### KMO
+
+```{r}
+library(psych)
+KMO(efadata) 
+```
+
+* Average KMO equals to 0.74, which is an average result.
+
+### Bartlett test of Sphericity
+
+* The null hypotheses is that the variance-covariance matrix is an identity matrix (variables are uncorrelated).
+
+```{r}
+cortest.bartlett(efadata) 
+
+r <- cor(efadata)
+cortest.bartlett(r)
+```
+
+* P-value indicates significant result, which is good. It means that our variables are correlated. 
+
+* According to tests above, we can conclude that we can use this data for FA.
+
+### Choose the number of factors
+
+**Eigenvalues**
+
+* should be above 1
+
+```{r}
+ev <- eigen(r) 
+ev$values
+```
+* Only 3 variables have eigenvalues higher than 1. Thus, we should extract 3 factors.
+
+**Parallel Analysis screen plot**
+
+* Helps determine the number of factors
+
+```{r}
+library(nFactors)
+nS <- nScree(x=ev$values) #get data for scree plot
+plotnScree(nS)
+```
+
+* Most tests say we should extract 3 factors
+
+## Models
+
+```{r}
+library(GPArotation)
+fit1  = fa(efadata, nfactors = 3, n.iter = 100, fm = "ml")
+fit1 
+```
+
+- Interpretation:
+  - Acceptable cumulative var (0.42). It means that 42% of variance explained by 3 factors (should be > 0.5 to be good result)
+  - RMSR is 0.02, which is very good 
+  - RMSEA index equals to 0.037, which is excellent (<.08 acceptable, <.05 excellent)
+  - Tucker Lewis Index is excellent (0.974) (>.90 acceptable, >.95 excellent) 
+  - Mean item complexity 1.1, which is good 
+  - As for Proportion Var and Proportion Explained, everything is looking good.  
+
+```{r}
+fit2 = fa(efadata, nfactors = 3, n.iter = 100, rotate = "varimax") #orthogonal rotation
+fit2
+```
+* Rotation did not help as all indexes are the same as for previous model
+
+```{r}
+fit3 = fa(efadata, nfactors = 3, n.iter = 100, rotate = "oblimin")#oblique rotation
+fit3
+```
+
+* Rotation did not help as all indexes are the same as for previous model
+
+## Visualisation
+
+```{r}
+fa.diagram(fit1)
+```
+
+- M1: xenophobia
+  - imsmetn - ALLOW MANY/FEW IMMIGRANTS OF SAME RACE/ETHNIC GROUP ASMAJORITY
+  - imdfetn - ALLOW MANY/FEW IMMIGRANTS OF DIFFERENT RACE/ETHNIC GROUP FROM MAJORITY
+  - impcntr - ALLOW MANY/FEW IMMIGRANTS FROM POORER COUNTRIES OUTSIDE EUROPE
+
+- M2: conservation
+  - ipmodst - IMPORTANT TO BE HUMBLE AND MODEST, NOT DRAW ATTENTION
+  - imptrad - IMPORTANT TO FOLLOW TRADITIONS AND CUSTOMS
+  - ipfrule - IMPORTANT TO DO WHAT IS TOLD AND FOLLOW RULES
+  - ipbhprp - IMPORTANT TO BEHAVE PROPERLY
+  
+- M3: universalism
+  - ipeqopt - IMPORTANT THAT PEOPLE ARE TREATED EQUALLY AND HAVE EQUAL OPPORTUNITIES
+  - ipudrst - IMPORTANT TO UNDERSTAND DIFFERENT PEOPLE
+  - impenv - IMPORTANT TO CARE FOR NATURE AND ENVIRONMENT
+
+
+# CFA
+
+* Using CFA check if the established model matches the data
+
+
+## Specification of the model
+
+```{r}
+library(lavaan)
+
+S.model1 <- '
+xenophobia =~ imsmetn + imdfetn + impcntr
+conservation =~ ipmodst + imptrad + ipfrule + ipbhprp
+universalism =~ ipeqopt + ipudrst + impenv
+'
+```
+
+## Run CFA 
+
+```{r}
+fit1 = cfa(S.model1, data = benelux)
+summary(fit1, standardized=TRUE, fit.measures=TRUE, modindices=TRUE)
+```
+* Tucker-Lewis Index (TLI) is excellent (0.97)
+* Comparative Fit Index (CFI) is also excellent (0.98)
+* RMSEA index equals to 0.038 (<.08 acceptable, <.05 excellent), which excellent
+* SRMR equals to 0.028, which is excellent
+
+-> In accordance with above indexes, the model is good, but
+
+* P-value of Chi-square equals to 0.000, which says to us that the model is different from data, but all important indexes confirmed that the model is good, thus, we can be sure in this model.
+
+* As for factor loadings, all of them are significant according to p-values (0.000). (Look at Latent Variables section)
+
+
+## Find problematic parameteris by MI and EPC
+
+* MI (threshold is 3.84 - should be less than this value) shows how Chi-square would change if we estimate some additional parameters.
+* EPC shows us the value to what the corresponding parameter equals to (correlation). Standardized EPC ≥ |0.2| indicate problematic misspecifications.
+
+```{r}
+mi_1 <- modindices(fit1)
+mi_1[mi_1$mi > 3.84, 1:5]
+```
+
+- The highest modification indices (correlations) have parameters: 
+  - imptrad ~~  impenv
+  - and others
+
+## Improve the model
+
+```{r}
+S.model2 <- '
+xenophobia =~ imsmetn + imdfetn + impcntr
+conservation =~ ipmodst + imptrad + ipfrule + ipbhprp
+universalism =~ ipeqopt + ipudrst + impenv
+imptrad ~~  impenv
+'
+```
+
+```{r}
+fit2 = cfa(S.model2, data = benelux)
+summary(fit2, standardized=TRUE, fit.measures=TRUE, modindices=TRUE)
+```
+
+Let us see whether indexes become better or not after adding correlations among some variables to structure of our model:
+
+* Tucker-Lewis Index (TLI) becomes even better (0.98)
+* Comparative Fit Index (CFI) is also become even better 0.99
+* RMSEA index equals becomes smaller: for this model it equals 0.031, for previous model it was 0.038.
+* SRMR equals to 0.025, for previous model it was 0.028, thus, also become better!
+* To sum up, model become better after adding correlation among variables that is not fully explained by one common factor. However, to be sure that the second model is significantly better than the first one we should run anova.
+
+## ANOVA
+
+```{r}
+anova(fit1, fit2)
+```
+
+* Anova result shows that the second model is significantly better than the first one. It means that the second model explains data better, than the first one.
+* We have lost 1 degree of freedom
+* Chi-square's difference is 91, which is really high
+* Thus, the second model is better
+
+# OLS
+
+Now let's explore the association between main socio-demographic characteristics and created latent variables. 
+
+## Saving factor scores
+
+```{r}
+benelux[,16:18] <- lavPredict(fit2, method = "regression")
+colnames(benelux)[16:18] <- c("xenophobia", "conservation","universalism")
+```
+
+## Models
+
+```{r}
+benelux$gndr <- factor(benelux$gndr, levels = 1:2, labels = c("Male", "Female"))
+```
+
+### Xenophobia
+
+```{r}
+labs <- c("Constant","Gender(Female)", "Year of birth", "Education years")
+  
+mod1 <- lm(xenophobia~gndr+yrbrn+eduyrs, data = benelux)
+library(sjPlot)
+tab_model(mod1, pred.labels = labs, dv.labels = "Xenophobia")
+```
+
+* Men and women do not significantly differ in levels of xenophobia (p-value = 0.45)
+
+* The relationship between year of birth and xenophobia is significant (p-values < 0.001) and negative. For each additional increase in year of birth the predicted level of xenophobia is 0.004 lower, on average, holding everything else constant.
+
+* The relationship between education and xenophobia is significant (p-values < 0.001) and negative. For each additional year of education the predicted level of xenophobia is 0.03 lower, on average, holding everything else constant.
+
+* Adjusted R-squared is 0.064, it means that 6.4% of variance in xenophobia can be explained by the the model.
+
+### Conservation
+
+```{r}
+mod2 <-  lm(conservation~gndr+yrbrn+eduyrs, data = benelux)
+tab_model(mod2, pred.labels = labs, dv.labels = "Conservation")
+```
+
+* Men and women do not significantly differ in levels of conservation (p-value = 0.65)
+
+* The relationship between year of birth and conservation is significant (p-values < 0.001) and positive. For each additional increase in year of birth the predicted level of conservation is 0.01 higher, on average, holding everything else constant.
+
+* The relationship between education and conservation is significant (p-values < 0.001) and positive. For each additional year of education the predicted level of conservation is 0.01 higher, on average, holding everything else constant.
+
+* Adjusted R-squared is 0.097, it means that 9.7% of variance in conservation can be explained by the the model.
+
+### Universalism
+
+```{r}
+mod3 <- lm(universalism~gndr+yrbrn+eduyrs, data = benelux)
+tab_model(mod3, pred.labels = labs, dv.labels = "Universalism")
+```
+
+* For females the predicted level of universalism is 0.03 lower, than for males on average, holding everything else constant (p-value = 0.002).
+
+* The relationship between year of birth and universalism is significant (p-value < 0.001) and positive. For each additional increase in year of birth the predicted level of universalism is 0.003 higher, on average, holding everything else constant.
+
+* The relationship between education and universalism is significant (p-values < 0.001) and negative. For each additional year of education the predicted level of universalism is 0.005 lower, on average, holding everything else constant.
+
+* Adjusted R-squared is 0.024, it means that only 2.4% of variance in universalism can be explained by the the model.
+
+
+
+
+
